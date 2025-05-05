@@ -1,26 +1,73 @@
-import React from 'react';
-import { Select, MenuItem } from '@mui/material';
+import React, { useEffect, useState } from 'react';
 import { useTheme } from '@mui/material/styles';
 import DashboardCard from '@/app/(DashboardLayout)/components/shared/DashboardCard';
 import dynamic from "next/dynamic";
+import { useCSVData } from '../../hooks/CSVDataContext';
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
-
 const SalesOverview = () => {
-
-    // select
-    const [month, setMonth] = React.useState('1');
-
-    const handleChange = (event: any) => {
-        setMonth(event.target.value);
-    };
-
+    const { csvData } = useCSVData();
+    const [chartData, setChartData] = useState<any>({
+        categories: [],
+        series: []
+    });
+    
     // chart color
     const theme = useTheme();
     const primary = theme.palette.primary.main;
     const secondary = theme.palette.secondary.main;
+    const warning = theme.palette.warning.main;
 
-    // chart
+    useEffect(() => {
+        if (csvData && csvData.length > 0) {
+            // Process the data to get service types per month
+            const serviceTypesSet = new Set(csvData.map(item => item.service_type));
+            const serviceTypes = Array.from(serviceTypesSet);
+            
+            // Extract month from date (format MM/DD/YY)
+            const getMonthFromDate = (dateStr: string) => {
+                const parts = dateStr.split('/');
+                const monthNum = parseInt(parts[0]);
+                return monthNum;
+            };
+
+            // Get all unique months in the data
+            const monthsSet = new Set(csvData.map(item => {
+                const dateStr = item.service_date as string;
+                return getMonthFromDate(dateStr);
+            }));
+            const months = Array.from(monthsSet).sort((a, b) => a - b);
+
+            // Month names
+            const monthNames = [
+                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+            ];
+            
+            // Create series data
+            const seriesData = serviceTypes.map(type => {
+                const data = months.map(month => {
+                    return csvData.filter(item => {
+                        const itemMonth = getMonthFromDate(item.service_date as string);
+                        return item.service_type === type && itemMonth === month;
+                    }).length;
+                });
+                
+                return {
+                    name: type,
+                    data: data
+                };
+            });
+            
+            // Set chart data
+            setChartData({
+                categories: months.map(m => monthNames[m-1]),
+                series: seriesData
+            });
+        }
+    }, [csvData]);
+
+    // chart options
     const optionscolumnchart: any = {
         chart: {
             type: 'bar',
@@ -30,8 +77,9 @@ const SalesOverview = () => {
                 show: true,
             },
             height: 370,
+            stacked: false,
         },
-        colors: [primary, secondary],
+        colors: [primary, secondary, warning],
         plotOptions: {
             bar: {
                 horizontal: false,
@@ -42,18 +90,18 @@ const SalesOverview = () => {
                 borderRadiusWhenStacked: 'all',
             },
         },
-
         stroke: {
             show: true,
             width: 5,
             lineCap: "butt",
             colors: ["transparent"],
-          },
+        },
         dataLabels: {
             enabled: false,
         },
         legend: {
-            show: false,
+            show: true,
+            position: 'top',
         },
         grid: {
             borderColor: 'rgba(0,0,0,0.1)',
@@ -65,12 +113,17 @@ const SalesOverview = () => {
             },
         },
         yaxis: {
-            tickAmount: 4,
+            title: {
+                text: 'Number of Services',
+            },
         },
         xaxis: {
-            categories: ['16/08', '17/08', '18/08', '19/08', '20/08', '21/08', '22/08', '23/08'],
+            categories: chartData.categories,
             axisBorder: {
                 show: false,
+            },
+            title: {
+                text: 'Months',
             },
         },
         tooltip: {
@@ -78,38 +131,27 @@ const SalesOverview = () => {
             fillSeriesColor: false,
         },
     };
-    const seriescolumnchart: any = [
-        {
-            name: 'Eanings this month',
-            data: [355, 390, 300, 350, 390, 180, 355, 390],
-        },
-        {
-            name: 'Expense this month',
-            data: [280, 250, 325, 215, 250, 310, 280, 250],
-        },
-    ];
 
     return (
-
-        <DashboardCard title="Sales Overview" action={
-            <Select
-                labelId="month-dd"
-                id="month-dd"
-                value={month}
-                size="small"
-                onChange={handleChange}
-            >
-                <MenuItem value={1}>March 2023</MenuItem>
-                <MenuItem value={2}>April 2023</MenuItem>
-                <MenuItem value={3}>May 2023</MenuItem>
-            </Select>
-        }>
-            <Chart
-                options={optionscolumnchart}
-                series={seriescolumnchart}
-                type="bar"
-                height={370} width={"100%"}
-            />
+        <DashboardCard title="Service Types by Month">
+            {csvData && csvData.length > 0 ? (
+                <Chart
+                    options={optionscolumnchart}
+                    series={chartData.series}
+                    type="bar"
+                    height={370} 
+                    width={"100%"}
+                />
+            ) : (
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    height: '370px' 
+                }}>
+                    Please upload CSV data to view service analysis
+                </div>
+            )}
         </DashboardCard>
     );
 };
